@@ -1,0 +1,17 @@
+# Cloudflare Worker configuration.
+#
+# Forking? Change `name` and the route pattern. If you mount the worker
+# somewhere other than /yt, change BASE in src/config.ts to match.
+# See SETUP.md.
+
+name = "quartz"
+main = "src/index.ts"
+compatibility_date = "2026-04-07"
+workers_dev = true
+preview_urls = false
+
+# A path route on an existing zone, so the rest of the site keeps being
+# served by whatever already serves it (GitHub Pages, in this case).
+[[routes]]
+pattern = "seaof.glass/yt/*"
+zone_name = "seaof.glass"

@@ -13,10 +13,12 @@ Everything needed to run your own copy, from nothing to a working route.
 5. [Customizing](#5-customizing)
 6. [Pointing at a self-hosted frontend](#6-pointing-at-a-self-hosted-frontend)
 7. [Media modes](#7-media-modes)
-8. [Troubleshooting](#8-troubleshooting)
-9. [How it works](#9-how-it-works)
-10. [Known limits](#10-known-limits)
-11. [Maintenance](#11-maintenance)
+8. [Relaying from a trusted machine](#8-relaying-from-a-trusted-machine)
+9. [Links without the /yt prefix](#9-links-without-the-yt-prefix)
+10. [Troubleshooting](#10-troubleshooting)
+11. [How it works](#11-how-it-works)
+12. [Known limits](#12-known-limits)
+13. [Maintenance](#13-maintenance)
 
 ---
 
@@ -299,7 +301,6 @@ depends on an undocumented endpoint that can change without notice. Run it
 knowing both.
 
 
-## 10. Troubleshooting
 ## 8. Relaying from a trusted machine
 
 YouTube refuses some videos when the request comes from a Cloudflare edge
@@ -449,32 +450,7 @@ no slash*. Every existing path on the site is excluded by that, since each has
 a dot or a slash. Do not create a top-level page whose name is exactly eleven
 such characters, or it will be read as a video id.
 
-
-Paths that are unmistakably YouTube links work at the domain root:
-
-```
-seaof.glass/watch?v=dQw4w9WgXcQ
-seaof.glass/youtu.be/dQw4w9WgXcQ
-seaof.glass/shorts/dQw4w9WgXcQ
-```
-
-These need their own Cloudflare routes, since a route pattern is a wildcard
-match rather than a regex:
-
-```
-seaof.glass/watch*      seaof.glass/youtu.be/*    seaof.glass/shorts/*
-seaof.glass/embed/*     seaof.glass/live/*        seaof.glass/https:/*
-```
-
-A bare id at the root (`seaof.glass/dQw4w9WgXcQ`) is deliberately not
-supported. Catching it needs `seaof.glass/*`, which routes the entire site
-through this worker, and the site is served by GitHub Pages. Proxying it back
-is worse than it sounds: `lasimeri.github.io` 301s to `seaof.glass`, so the
-worker would have to defeat its own origin's redirect to avoid a loop. One
-convenience is not worth putting the whole domain behind this code. Use
-`/yt/<id>` for bare ids.
-
-
+## 10. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -494,7 +470,9 @@ npx wrangler tail
 
 ---
 
-## 9. How it works
+---
+
+## 11. How it works
 
 ```
 chat client sees seaof.glass/yt/<link>
@@ -530,7 +508,7 @@ logged.
 
 ---
 
-## 10. Known limits
+## 12. Known limits
 
 - **No inline player.** Chat platforms play a direct media URL or an
   allowlisted player; a third-party page gets an image card. See
@@ -542,7 +520,7 @@ logged.
 
 ---
 
-## 11. Maintenance
+## 13. Maintenance
 
 ```sh
 npm run deploy

@@ -23,7 +23,7 @@ import {
 } from './config';
 import { homePage } from './home';
 import { oembedResponse, unavailablePage, videoPage } from './render';
-import { fetchFormats, pickProgressive, proxyMedia } from './stream';
+import { serveMedia } from './media';
 import { bestThumbnail, fetchMeta, parseTarget, watchUrl } from './youtube';
 
 // Per-isolate rate limit. Resets when the isolate recycles, which is
@@ -70,13 +70,7 @@ export default {
 		// is why the card at <BASE>/<id> still exists alongside it.
 		const direct = /^(?:media\/)?([A-Za-z0-9_-]{11})\.mp4$/.exec(rest);
 		if (direct) {
-			const id = direct[1];
-			const formats = await fetchFormats(id);
-			const progressive = pickProgressive(formats);
-			if (!progressive?.url) {
-				return new Response('no single-file stream for this video', { status: 404 });
-			}
-			return proxyMedia(progressive.url, request);
+			return serveMedia(direct[1], request);
 		}
 
 

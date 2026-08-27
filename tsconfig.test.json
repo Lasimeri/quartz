@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "outDir": "/tmp/claude-1000/-home-lasimeri/0162c2ae-f2d0-4da7-825e-256a9febdda9/scratchpad/muxjs",
+    "skipLibCheck": true
+  },
+  "include": ["src/mp4"]
+}

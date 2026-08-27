@@ -35,7 +35,7 @@ export const THEME_COLOR = '#c4945a';
  *              that can mux above 360p. See SETUP.md section 7.
  */
 export type MediaMode = 'off' | 'iframe' | 'proxy' | 'external';
-export const MEDIA_MODE: MediaMode = 'proxy';
+export const MEDIA_MODE: MediaMode = 'off';
 
 /**
  * Origin of a backend that serves a single muxed MP4 per video id, at

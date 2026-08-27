@@ -48,11 +48,7 @@ printf '\nembeds\n'
 check 'title'            'og:title" content="Rick Astley'          "$(bot "/$VID?cb=$CB")"
 check 'channel'          'og:description" content="Rick Astley"'   "$(bot "/$VID?cb=$CB")"
 check 'thumbnail'        'og:image" content="https://i.ytimg.com'  "$(bot "/$VID?cb=$CB")"
-check 'player card'       'twitter:card" content="player"'      "$(bot "/$VID?cb=$CB")"
-check 'direct mp4 tag'    'og:video:type" content="video/mp4"'  "$(bot "/$VID?cb=$CB")"
-check 'media url points here' "/media/$VID.mp4"       "$(bot "/$VID?cb=$CB")"
-check 'media serves mp4'  'video/mp4'  "$(curl -sS -o /dev/null -D - -r 0-1023 "$BASE/media/$VID.mp4")"
-check 'media honours range' '206'      "$(curl -sS -o /dev/null -w '%{http_code}' -r 0-1023 "$BASE/media/$VID.mp4")"
+check 'image card'        'twitter:card" content="summary_large_image"' "$(bot "/$VID?cb=$CB")"
 check 'unavailable video' 'Video unavailable'                      "$(bot "/aaaaaaaaaaa?cb=$CB")"
 
 printf '\nrouting\n'

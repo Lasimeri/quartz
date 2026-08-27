@@ -216,6 +216,27 @@ attempt it, which is why it has nothing to break.
 ---
 
 ## 7. Media modes
+### The two link forms
+
+| Link | What Discord shows |
+|---|---|
+| `<host>/yt/<id>` | A card: title, channel, thumbnail |
+| `<host>/yt/<id>.mp4` | A video that plays in the chat window |
+
+A media link is the one video path that works from any domain. Chat clients
+play a url ending in `.mp4` that answers with `Content-Type: video/mp4`, the
+same way they play any other direct file link. No OpenGraph tags are involved,
+so no allowlist applies.
+
+That is worth stating plainly, because the obvious-looking alternative does not
+work: putting the same mp4 in `og:video` on an HTML page gets refused, and a
+refused video card yields **no embed at all**, not a fallback to the thumbnail.
+The gate is the page's domain, not the file's playability. `MEDIA_MODE` stays
+`off` for that reason.
+
+The tradeoff is that a media link carries no metadata, so a player and a
+titled card cannot come from one url. Post whichever suits the moment.
+
 
 `MEDIA_MODE` in `src/config.ts` decides how the embed offers video.
 
@@ -226,7 +247,8 @@ attempt it, which is why it has nothing to break.
 | `proxy` (default) | Real inline playback, 360p | Nothing |
 | `external` | Real inline playback, any quality you mux | A backend |
 
-### Why `proxy` is the default
+
+### Why `MEDIA_MODE` defaults to `off`
 
 A chat embed is not a browser. It runs no JavaScript, so a custom player
 cannot execute inside it. Clients render a static image, their own native

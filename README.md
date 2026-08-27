@@ -11,6 +11,12 @@ https://seaof.glass/yt/dQw4w9WgXcQ
 https://seaof.glass/yt/https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30
 ```
 
+Add `.mp4` and you get a video that plays in the chat window instead:
+
+```
+https://seaof.glass/yt/dQw4w9WgXcQ.mp4
+```
+
 Clicking still lands on YouTube. Crawlers get a card with the title, channel,
 and a 1280x720 thumbnail.
 

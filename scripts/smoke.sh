@@ -49,6 +49,8 @@ check 'title'            'og:title" content="Rick Astley'          "$(bot "/$VID
 check 'channel'          'og:description" content="Rick Astley"'   "$(bot "/$VID?cb=$CB")"
 check 'thumbnail'        'og:image" content="https://i.ytimg.com'  "$(bot "/$VID?cb=$CB")"
 check 'image card'        'twitter:card" content="summary_large_image"' "$(bot "/$VID?cb=$CB")"
+check 'direct .mp4 plays'  'video/mp4'  "$(curl -sS -o /dev/null -D - -r 0-1023 "$BASE/$VID.mp4")"
+check 'direct .mp4 ranges' '206'        "$(curl -sS -o /dev/null -w '%{http_code}' -r 0-1023 "$BASE/$VID.mp4")"
 check 'unavailable video' 'Video unavailable'                      "$(bot "/aaaaaaaaaaa?cb=$CB")"
 
 printf '\nrouting\n'

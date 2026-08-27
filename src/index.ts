@@ -15,7 +15,6 @@
 import {
 	BASE,
 	BOT_UA,
-	ID_RE,
 	MEDIA_MODE,
 	MEDIA_ORIGIN,
 	RATE_LIMIT,
@@ -61,13 +60,17 @@ export default {
 		if (rest === 'oembed') return oembedResponse(host, url.searchParams);
 		if (rest === '') return homePage(host);
 
-		// The media endpoint chat clients actually play from.
-		const media = /^media\/([A-Za-z0-9_-]{11})\.mp4$/.exec(rest);
-		if (media) {
-			if (MEDIA_MODE !== 'proxy') return new Response('not found', { status: 404 });
-			const id = media[1];
-			if (!ID_RE.test(id)) return new Response('not found', { status: 404 });
-
+		// <BASE>/<id>.mp4 - a plain media link.
+		//
+		// This is the one video path that works from any domain: chat
+		// clients play a url that ends in .mp4 and answers with
+		// video/mp4, exactly as they would any other direct file link.
+		// No OpenGraph tags are involved, so no allowlist applies. The
+		// cost is that a media link carries no title or channel, which
+		// is why the card at <BASE>/<id> still exists alongside it.
+		const direct = /^(?:media\/)?([A-Za-z0-9_-]{11})\.mp4$/.exec(rest);
+		if (direct) {
+			const id = direct[1];
 			const formats = await fetchFormats(id);
 			const progressive = pickProgressive(formats);
 			if (!progressive?.url) {
@@ -75,6 +78,7 @@ export default {
 			}
 			return proxyMedia(progressive.url, request);
 		}
+
 
 		const target = parseTarget(rest, url.searchParams);
 		if (!target) return new Response('no video id in that link', { status: 404 });

@@ -235,12 +235,19 @@ export function homePage(host: string): Response {
 		<em>paste any youtube link behind ${esc(BASE)}/</em>
 	</p>
 </header>
-
 <div class="section-label">-- usage --</div>
 <div class="transform">
 	<div><span class="mark">x</span> <span class="before">https://youtu.be/dQw4w9WgXcQ</span></div>
 	<div><span class="mark">y</span> <span class="after">https://<span class="ins">${esc(prefix)}/</span>dQw4w9WgXcQ</span></div>
+	<div><span class="mark">p</span> <span class="after">https://${esc(prefix)}/dQw4w9WgXcQ<span class="ins">.mp4</span></span></div>
 </div>
+<div class="about" style="margin-top:-1rem">
+	<p>
+		y gives a card with the title, channel and thumbnail.
+		p gives a video that plays in the chat window.
+	</p>
+</div>
+
 
 <div class="section-label">-- convert --</div>
 <div class="convert">

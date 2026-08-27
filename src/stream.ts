@@ -32,6 +32,18 @@ const CLIENTS: ClientSpec[] = [
 		},
 	},
 	{
+		// Often permitted where ANDROID_VR is refused, and it still
+		// offers itag 18, so a hit here avoids muxing entirely.
+		name: 'ANDROID',
+		ua: 'com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip',
+		context: {
+			client: {
+				clientName: 'ANDROID', clientVersion: '20.10.38',
+				androidSdkVersion: 34, osName: 'Android', osVersion: '14', hl: 'en',
+			},
+		},
+	},
+	{
 		name: 'IOS',
 		ua: 'com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X)',
 		context: {
@@ -92,13 +104,19 @@ async function askClient(id: string, spec: ClientSpec, attempts: number): Promis
 				const formats = [...(sd.formats ?? []), ...(sd.adaptiveFormats ?? [])];
 				if (formats.length) return { ok: true, formats, client: spec.name };
 			}
-			// A definite verdict from YouTube: another attempt with the
-			// same client will say the same thing.
+			// LOGIN_REQUIRED reads like a verdict about the video, and
+			// it is not: the same client and video answers OK on a later
+			// attempt from a different edge address. Measured at 1/4 to
+			// 4/4 across repeats. So it is retried like any transient
+			// failure. Statuses that really are about the video, such as
+			// UNPLAYABLE or ERROR, are taken at face value.
 			const ps = d?.playabilityStatus;
-			if (ps?.status && ps.status !== 'OK') {
-				return { ok: false, status: ps.status, reason: ps.reason ?? '' };
+			const verdict = ps?.status ?? 'NO_FORMATS';
+			if (verdict !== 'OK' && verdict !== 'LOGIN_REQUIRED') {
+				return { ok: false, status: verdict, reason: ps?.reason ?? '' };
 			}
-			status = ps?.status ?? 'NO_FORMATS';
+			status = verdict;
+			reason = ps?.reason ?? '';
 		}
 
 		if (i < attempts - 1) await new Promise(r => setTimeout(r, 150 * (i + 1)));

@@ -65,7 +65,8 @@ export async function serveMedia(id: string, request: Request, env: Env): Promis
 	if (!player.ok) return why(player.status, player.reason);
 
 	// A progressive format needs no muxing, so prefer it when offered.
-	const progressive = forceMux ? null : pickProgressive(player.formats);
+	const progressiveFallback = pickProgressive(player.formats);
+	const progressive = forceMux ? null : progressiveFallback;
 	if (progressive?.url) return proxyMedia(progressive.url, request);
 
 	// Otherwise combine an H.264 track with an AAC one on the fly.
@@ -76,8 +77,23 @@ export async function serveMedia(id: string, request: Request, env: Env): Promis
 			headers: { 'Content-Type': 'text/plain; charset=utf-8' },
 		});
 	}
+	// Muxing reaches out to googlevideo several times and parses what
+	// comes back, so it has real failure modes: an init range that
+	// 403s, an index that is not a sidx, a truncated read. Any of those
+	// used to surface as a bare 500. Catch them, say what happened, and
+	// fall back to the progressive stream when one exists.
+	let plan;
+	try {
+		plan = await planMux(pair.video, pair.audio);
+	} catch (e) {
+		const detail = e instanceof Error ? e.message : String(e);
+		if (progressiveFallback?.url) return proxyMedia(progressiveFallback.url, request);
+		return new Response(`could not mux this video: ${detail}\n`, {
+			status: 502,
+			headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+		});
+	}
 
-	const plan = await planMux(pair.video, pair.audio);
 	const wanted = parseRange(request.headers.get('Range'), plan.totalSize);
 
 	const headers = new Headers({

@@ -43,6 +43,37 @@ function rateOk(ip: string): boolean {
 const ROOT_SHAPES =
 	/^(watch|shorts\/|embed\/|live\/|v\/|youtu\.be\/|(www\.|m\.|music\.)?youtube\.com\/|https?:)/i;
 
+/**
+ * A bare video id at the root, e.g. seaof.glass/dQw4w9WgXcQ.
+ *
+ * Nothing in the path distinguishes this from an ordinary site path,
+ * so the rule is deliberately narrow: exactly eleven url-safe
+ * characters, no dot and no slash. Every existing path on the site is
+ * excluded by that, since they all carry a dot or a slash. Avoid
+ * creating a top-level page whose name is exactly eleven such
+ * characters and this stays unambiguous.
+ */
+const BARE_ID = /^[A-Za-z0-9_-]{11}$/;
+
+/** A direct media link, which is also valid without the prefix. */
+const MEDIA_SHAPE = /^(?:media\/)?[A-Za-z0-9_-]{11}\.(mp4|webm)$/;
+
+/**
+ * Hand a non-video request to the origin.
+ *
+ * A worker's subrequest to its own zone goes to the origin rather than
+ * back through the worker, so this reaches GitHub Pages directly and
+ * does not loop. Verified against the live zone before this route was
+ * widened. On a hostname with no origin behind it, such as
+ * workers.dev, there is nothing to fall through to and looping would
+ * be the actual risk, so those get a 404 instead.
+ */
+function passThrough(request: Request, host: string): Promise<Response> | Response {
+	if (host.endsWith('.workers.dev')) {
+		return new Response('not found', { status: 404 });
+	}
+	return fetch(request);
+}
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		const url = new URL(request.url);
@@ -73,8 +104,11 @@ export default {
 		const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
 		if (!rateOk(ip)) return new Response('rate limited', { status: 429 });
 
-		if (!underBase && !ROOT_SHAPES.test(rest)) {
-			return new Response('not found', { status: 404 });
+		// Not the prefix, not a recognisable link, not a bare id: this
+		// path belongs to the site, so hand it back to the origin
+		// untouched rather than answering for it.
+		if (!underBase && !ROOT_SHAPES.test(rest) && !BARE_ID.test(rest) && !MEDIA_SHAPE.test(rest)) {
+			return passThrough(request, host);
 		}
 
 		if (underBase) {

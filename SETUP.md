@@ -402,6 +402,54 @@ banding, which is the first artefact a 1500k target produces.
 
 ## 9. Links without the /yt prefix
 
+With a single route covering the domain, every form works at the root:
+
+```
+seaof.glass/dQw4w9WgXcQ          bare id
+seaof.glass/dQw4w9WgXcQ.mp4      bare id, playable
+seaof.glass/watch?v=dQw4w9WgXcQ
+seaof.glass/youtu.be/dQw4w9WgXcQ
+seaof.glass/youtube.com/watch?v=dQw4w9WgXcQ
+seaof.glass/shorts/dQw4w9WgXcQ
+```
+
+The route to add is one line:
+
+```
+seaof.glass/*
+```
+
+### How the rest of the site keeps working
+
+The worker now sits in front of every path, so anything it does not recognise
+as a video link is handed straight back to the origin:
+
+```ts
+return fetch(request);
+```
+
+That works because **a worker's subrequest to its own zone goes to the origin
+rather than back through the worker**. Verified against the live zone before
+this was built: fetching `https://seaof.glass/tools/dns.html` from inside the
+worker returned 200 with the real Pages content and GitHub's response headers,
+with no loop.
+
+Fetching `lasimeri.github.io` instead does *not* work, and it is the obvious
+thing to reach for: GitHub Pages 301s that host to the custom domain, so a
+pass-through built on it would bounce straight back into the worker. Use the
+zone's own hostname.
+
+Routes are matched most-specific-first, so `seaof.glass/s/*` continues to reach
+the crystal worker and never touches this one.
+
+### The one rule to remember
+
+A bare id is recognised as *exactly eleven url-safe characters with no dot and
+no slash*. Every existing path on the site is excluded by that, since each has
+a dot or a slash. Do not create a top-level page whose name is exactly eleven
+such characters, or it will be read as a video id.
+
+
 Paths that are unmistakably YouTube links work at the domain root:
 
 ```

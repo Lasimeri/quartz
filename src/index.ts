@@ -32,8 +32,16 @@ function rateOk(ip: string): boolean {
 	return true;
 }
 
-/** Paths that are unmistakably youtube links even without the prefix. */
-const ROOT_SHAPES = /^(watch|youtu\.be\/|shorts\/|embed\/|live\/|v\/|https?:)/i;
+/**
+ * Paths that are unmistakably youtube links even without the prefix.
+ *
+ * Covers what people actually paste: a bare watch/shorts path, a
+ * youtu.be link, and a full url with or without its scheme. A bare
+ * 11-character id is deliberately absent, since nothing distinguishes
+ * it from an ordinary site path.
+ */
+const ROOT_SHAPES =
+	/^(watch|shorts\/|embed\/|live\/|v\/|youtu\.be\/|(www\.|m\.|music\.)?youtube\.com\/|https?:)/i;
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

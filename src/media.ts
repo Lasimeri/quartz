@@ -8,6 +8,8 @@
 
 import { CACHE_OK } from './config';
 import { muxStream, planMux } from './mp4/mux';
+import type { Env } from './env';
+import { serveStored } from './relay';
 import { fetchPlayer, pickMuxPair, pickProgressive, proxyMedia } from './stream';
 
 /** Parse an inclusive byte range, clamped to the known size. */
@@ -49,7 +51,12 @@ function why(status: string, reason: string): Response {
 }
 
 /** Serve one video as a single playable mp4. */
-export async function serveMedia(id: string, request: Request): Promise<Response> {
+export async function serveMedia(id: string, request: Request, env: Env): Promise<Response> {
+	// A relayed file was fetched somewhere YouTube trusts, so it both
+	// plays faster and covers videos the worker cannot reach itself.
+	const stored = await serveStored(id, request, env);
+	if (stored) return stored;
+
 	// ?hd=1 forces the mux even when a progressive stream exists, which
 	// is how you get 720p instead of the 360p single file.
 	const forceMux = new URL(request.url).searchParams.has("hd");

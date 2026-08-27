@@ -5,25 +5,18 @@
 // ids reach the redirect, so the host cannot be used as an open
 // redirect.
 //
-// In 'proxy' media mode the worker also serves the single-file 360p
-// stream at <BASE>/media/<id>.mp4, which is what makes a chat client's
-// native player work without depending on anyone's allowlist.
-//
-// Mounted under a path prefix (see BASE in config.ts) rather than a
-// hostname, because seaof.glass itself is served by GitHub Pages.
+// Links work with or without the /yt prefix: paths that already look
+// like a youtube link (/watch?v=, /youtu.be/, /shorts/) are handled
+// wherever they appear, so seaof.glass/watch?v=ID works directly. The
+// prefix still exists for bare ids, which cannot be told apart from
+// ordinary site paths.
 
-import {
-	BASE,
-	BOT_UA,
-	MEDIA_MODE,
-	MEDIA_ORIGIN,
-	RATE_LIMIT,
-	RATE_WINDOW_MS,
-	WATCH_ORIGIN,
-} from './config';
+import { BASE, BOT_UA, MEDIA_MODE, MEDIA_ORIGIN, RATE_LIMIT, RATE_WINDOW_MS, WATCH_ORIGIN } from './config';
+import type { Env } from './env';
 import { homePage } from './home';
-import { oembedResponse, unavailablePage, videoPage } from './render';
 import { serveMedia } from './media';
+import { deleteStored, storeUpload } from './relay';
+import { oembedResponse, unavailablePage, videoPage } from './render';
 import { bestThumbnail, fetchMeta, parseTarget, watchUrl } from './youtube';
 
 // Per-isolate rate limit. Resets when the isolate recycles, which is
@@ -39,26 +32,46 @@ function rateOk(ip: string): boolean {
 	return true;
 }
 
+/** Paths that are unmistakably youtube links even without the prefix. */
+const ROOT_SHAPES = /^(watch|youtu\.be\/|shorts\/|embed\/|live\/|v\/|https?:)/i;
+
 export default {
-	async fetch(request: Request, _env: unknown, ctx: ExecutionContext): Promise<Response> {
-		if (request.method !== 'GET' && request.method !== 'HEAD') {
+	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		const url = new URL(request.url);
+		const host = url.hostname;
+		const method = request.method;
+
+		// Everything under the prefix, or the bare path when a link shape
+		// was pasted straight after the domain.
+		const underBase = url.pathname === BASE || url.pathname.startsWith(`${BASE}/`);
+		const rest = underBase
+			? url.pathname.slice(BASE.length).replace(/^\//, '')
+			: url.pathname.replace(/^\//, '');
+
+		// Uploads from a trusted machine. Checked before the read-only
+		// guard below, since these are the only writes the worker takes.
+		const store = /^store\/([A-Za-z0-9_-]{11})$/.exec(rest);
+		if (store && underBase) {
+			if (method === 'PUT') return storeUpload(store[1], request, env);
+			if (method === 'DELETE') return deleteStored(store[1], request, env);
 			return new Response('method not allowed', { status: 405 });
 		}
 
-		const url = new URL(request.url);
-		const host = url.hostname;
+		if (method !== 'GET' && method !== 'HEAD') {
+			return new Response('method not allowed', { status: 405 });
+		}
 
 		const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
 		if (!rateOk(ip)) return new Response('rate limited', { status: 429 });
 
-		// Everything below BASE; "" when the base path itself was hit.
-		if (url.pathname !== BASE && !url.pathname.startsWith(`${BASE}/`)) {
+		if (!underBase && !ROOT_SHAPES.test(rest)) {
 			return new Response('not found', { status: 404 });
 		}
-		const rest = url.pathname.slice(BASE.length).replace(/^\//, '');
 
-		if (rest === 'oembed') return oembedResponse(host, url.searchParams);
-		if (rest === '') return homePage(host);
+		if (underBase) {
+			if (rest === 'oembed') return oembedResponse(host, url.searchParams);
+			if (rest === '') return homePage(host);
+		}
 
 		// <BASE>/<id>.mp4 - a plain media link.
 		//
@@ -69,10 +82,7 @@ export default {
 		// cost is that a media link carries no title or channel, which
 		// is why the card at <BASE>/<id> still exists alongside it.
 		const direct = /^(?:media\/)?([A-Za-z0-9_-]{11})\.mp4$/.exec(rest);
-		if (direct) {
-			return serveMedia(direct[1], request);
-		}
-
+		if (direct) return serveMedia(direct[1], request, env);
 
 		const target = parseTarget(rest, url.searchParams);
 		if (!target) return new Response('no video id in that link', { status: 404 });
@@ -91,8 +101,7 @@ export default {
 		if (!meta) return unavailablePage(canonical);
 
 		// An external backend has to mux before anyone presses play, so
-		// start it as soon as the link is scraped. The proxy mode needs
-		// no warming: it streams straight through.
+		// start it as soon as the link is scraped.
 		if (MEDIA_MODE === 'external' && MEDIA_ORIGIN) {
 			ctx.waitUntil(
 				fetch(`${MEDIA_ORIGIN}/${target.id}.mp4?warm=1`)

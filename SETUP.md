@@ -298,7 +298,106 @@ the delivery path for other people's copyrighted material. `src/stream.ts`
 depends on an undocumented endpoint that can change without notice. Run it
 knowing both.
 
-## 8. Troubleshooting
+
+## 10. Troubleshooting
+## 8. Relaying from a trusted machine
+
+YouTube refuses some videos when the request comes from a Cloudflare edge
+range, answering `LOGIN_REQUIRED` regardless of client. A home address is
+served normally. `tools/relay.sh` exploits exactly that: it downloads and muxes
+locally, then uploads the finished file to the worker, which stores it in R2
+and serves it from there.
+
+### Setup
+
+```sh
+npx wrangler secret put RELAY_TOKEN      # any long random string
+export QUARTZ_TOKEN='<the same string>'
+export QUARTZ_ENDPOINT=https://seaof.glass/yt
+```
+
+### Use
+
+```sh
+./tools/relay.sh dQw4w9WgXcQ                    # H.264 + AAC, stream copy
+./tools/relay.sh <url> --av1                    # AV1 1500k + Opus 96k
+./tools/relay.sh <url> --av1 --vb 2000k --ab 128k
+./tools/relay.sh <url> --nvenc --cq 24          # H.264 on the GPU
+./tools/relay.sh <url> --hevc                   # HEVC on the GPU
+```
+
+Once uploaded, `<endpoint>/<id>.mp4` serves from R2 and never touches YouTube.
+Stored files answer with `X-Quartz-Source: r2`, and `DELETE <endpoint>/store/<id>`
+removes one.
+
+### Codecs, with numbers
+
+Measured on one 720p video, comparing what YouTube itself publishes:
+
+| Stream | Size | vs baseline |
+|---|---|---|
+| H.264 720p | 26,588 KB | baseline |
+| VP9 720p | 20,948 KB | 21% smaller |
+| AAC audio | 1,554 KB | baseline |
+| Opus audio | 1,503 KB | 3% smaller |
+
+The savings are almost entirely in the video codec. Opus over AAC buys about
+3% of a track that is itself 5% of the file.
+
+The default is H.264 plus AAC because every client decodes it. AV1 is
+materially smaller and materially less playable: no iPhone before the A17 Pro,
+and many Android devices lack a decoder. An unsupported codec produces a broken
+player rather than a fallback to something else.
+
+### On Opus and error correction
+
+libopus can add forward error correction with `-packet_loss N`. It is
+deliberately not used here. FEC buys resilience over a lossy transport by
+spending part of the bitrate on redundancy, so in a stored file it strictly
+lowers quality at a fixed rate. What actually raises quality at 96k is
+`-compression_level 10` (maximum analysis), `-frame_duration 60` (longest
+frames, least per-packet overhead), true VBR, and `-application audio`. Those
+are what the script sets.
+
+### On AV1 and your GPU
+
+Ampere cards, the 3090 and 3090 Ti included, have AV1 decode but no AV1 encode
+silicon; `av1_nvenc` reports "No capable devices found". `--av1` therefore runs
+SVT-AV1 on the CPU and is slow. `--nvenc` and `--hevc` do use the GPU.
+
+The AV1 settings are two-pass, 10-bit, preset 4, with
+`tune=0:film-grain=8:enable-overlays=1:enable-tf=1:enable-qm=1:qm-min=0:scd=1`.
+Grain synthesis matters most: coding real grain at 1500k consumes the bitrate
+that detail needs, so it is denoised out and re-synthesised at decode. 10-bit is
+used even from an 8-bit source because the wider internal precision suppresses
+banding, which is the first artefact a 1500k target produces.
+
+## 9. Links without the /yt prefix
+
+Paths that are unmistakably YouTube links work at the domain root:
+
+```
+seaof.glass/watch?v=dQw4w9WgXcQ
+seaof.glass/youtu.be/dQw4w9WgXcQ
+seaof.glass/shorts/dQw4w9WgXcQ
+```
+
+These need their own Cloudflare routes, since a route pattern is a wildcard
+match rather than a regex:
+
+```
+seaof.glass/watch*      seaof.glass/youtu.be/*    seaof.glass/shorts/*
+seaof.glass/embed/*     seaof.glass/live/*        seaof.glass/https:/*
+```
+
+A bare id at the root (`seaof.glass/dQw4w9WgXcQ`) is deliberately not
+supported. Catching it needs `seaof.glass/*`, which routes the entire site
+through this worker, and the site is served by GitHub Pages. Proxying it back
+is worse than it sounds: `lasimeri.github.io` 301s to `seaof.glass`, so the
+worker would have to defeat its own origin's redirect to avoid a loop. One
+convenience is not worth putting the whole domain behind this code. Use
+`/yt/<id>` for bare ids.
+
 
 
 | Symptom | Cause | Fix |

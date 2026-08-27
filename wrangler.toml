@@ -15,3 +15,10 @@ preview_urls = false
 [[routes]]
 pattern = "seaof.glass/yt/*"
 zone_name = "seaof.glass"
+
+# Cache for files muxed on a trusted machine and uploaded through the
+# worker. Serving from here bypasses YouTube's refusal of Cloudflare
+# edge ranges, because acquisition happened somewhere else entirely.
+[[r2_buckets]]
+binding = "STORE"
+bucket_name = "quartz-relay"

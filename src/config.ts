@@ -20,7 +20,40 @@ export const THEME_COLOR = '#c4945a';
  * off by default: an unhonoured player card shows less than an image
  * card, not more.
  */
-export const USE_PLAYER_CARD = true;
+/**
+ * How the embed offers video.
+ *
+ *   'off'      image card only.
+ *   'iframe'   youtube.com/embed tags; only renders where the chat
+ *              client allowlists that host, which Discord mobile does
+ *              not. Costs nothing to try.
+ *   'proxy'    the worker serves the single-file 360p stream itself at
+ *              <BASE>/media/<id>.mp4. Real inline playback everywhere,
+ *              no allowlist involved, no backend to run. Bytes transit
+ *              the worker, which is the cost.
+ *   'external' same, but the file comes from MEDIA_ORIGIN, a backend
+ *              that can mux above 360p. See SETUP.md section 7.
+ */
+export type MediaMode = 'off' | 'iframe' | 'proxy' | 'external';
+export const MEDIA_MODE: MediaMode = 'proxy';
+
+/**
+ * Origin of a backend that serves a single muxed MP4 per video id, at
+ * `${MEDIA_ORIGIN}/<id>.mp4`. Set this and Discord's native player
+ * takes over: real inline playback, at whatever quality the backend
+ * muxes, with no dependence on anyone's allowlist.
+ *
+ * Empty disables it and the worker falls back to an image card or the
+ * allowlist-dependent iframe tags. See SETUP.md section 7 for the
+ * contract the backend must satisfy and a reference implementation.
+ *
+ * Format: origin only, no trailing slash.
+ */
+export const MEDIA_ORIGIN = '';
+
+/** Dimensions advertised for the muxed file. Match your backend. */
+export const MEDIA_WIDTH = 1280;
+export const MEDIA_HEIGHT = 720;
 
 /** User agents that receive OpenGraph HTML instead of a redirect. */
 export const BOT_UA =

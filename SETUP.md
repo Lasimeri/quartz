@@ -12,10 +12,11 @@ Everything needed to run your own copy, from nothing to a working route.
 4. [Verifying it works](#4-verifying-it-works)
 5. [Customizing](#5-customizing)
 6. [Pointing at a self-hosted frontend](#6-pointing-at-a-self-hosted-frontend)
-7. [Troubleshooting](#7-troubleshooting)
-8. [How it works](#8-how-it-works)
-9. [Known limits](#9-known-limits)
-10. [Maintenance](#10-maintenance)
+7. [Media modes](#7-media-modes)
+8. [Troubleshooting](#8-troubleshooting)
+9. [How it works](#9-how-it-works)
+10. [Known limits](#10-known-limits)
+11. [Maintenance](#11-maintenance)
 
 ---
 
@@ -214,7 +215,69 @@ attempt it, which is why it has nothing to break.
 
 ---
 
-## 7. Troubleshooting
+## 7. Media modes
+
+`MEDIA_MODE` in `src/config.ts` decides how the embed offers video.
+
+| Mode | Playback | Needs |
+|---|---|---|
+| `off` | Thumbnail only | Nothing |
+| `iframe` | Only where the client allowlists youtube.com | Nothing |
+| `proxy` (default) | Real inline playback, 360p | Nothing |
+| `external` | Real inline playback, any quality you mux | A backend |
+
+### Why `proxy` is the default
+
+A chat embed is not a browser. It runs no JavaScript, so a custom player
+cannot execute inside it. Clients render a static image, their own native
+player fed a direct media URL, or an iframe for an allowlisted host. That
+leaves one route to playback that does not depend on someone's allowlist:
+hand the native player a single progressive MP4.
+
+YouTube's format 18 is exactly that, 360p H.264 with AAC already muxed into
+one file. The worker fetches its URL and streams the bytes through, forwarding
+Range so seeking works. No muxing, no storage, no backend.
+
+The bytes do have to transit the worker: googlevideo binds a URL to the IP that
+requested it, so handing the raw URL to a viewer earns a 403. The body is
+streamed rather than buffered, so this costs bandwidth rather than CPU or
+memory.
+
+### Above 360p
+
+360p is the ceiling for single-file playback because YouTube removed the 720p
+muxed format in June 2024. Everything higher is adaptive: video-only, needing a
+separate audio track and a container mux to become one playable file.
+
+Muxing is possible in a Worker. Adaptive streams are fragmented MP4 already,
+sample tables are small and sit at known offsets, R2 gives durable storage with
+multipart upload, and the 128MB memory ceiling is avoidable by processing in
+chunks and streaming out. It is a real MP4 muxer's worth of work, in
+TypeScript, without ffmpeg, and it must be right about sample offsets or
+nothing plays.
+
+The cheaper route to the same result is `external`: a backend where `ffmpeg`
+already solves this. `backend/server.mjs` is a working reference at about 150
+lines. Set `MEDIA_ORIGIN` to its origin and `MEDIA_MODE` to `external`, and the
+worker pre-warms it the moment a link is scraped, so muxing starts long before
+anyone presses play.
+
+### Reliability note
+
+InnerTube rejects roughly one in ten requests arriving from Cloudflare's edge
+ranges, and answers the rest normally. `fetchFormats` retries three times with
+a growing pause, which took a measured 9-in-10 success rate to 10-in-10. If
+that share ever climbs, this is the first thing to check.
+
+### Risk
+
+Proxying third-party video is a YouTube terms violation and puts your host in
+the delivery path for other people's copyrighted material. `src/stream.ts`
+depends on an undocumented endpoint that can change without notice. Run it
+knowing both.
+
+## 8. Troubleshooting
+
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -234,7 +297,7 @@ npx wrangler tail
 
 ---
 
-## 8. How it works
+## 9. How it works
 
 ```
 chat client sees seaof.glass/yt/<link>
@@ -270,7 +333,7 @@ logged.
 
 ---
 
-## 9. Known limits
+## 10. Known limits
 
 - **No inline player.** Chat platforms play a direct media URL or an
   allowlisted player; a third-party page gets an image card. See
@@ -282,7 +345,7 @@ logged.
 
 ---
 
-## 10. Maintenance
+## 11. Maintenance
 
 ```sh
 npm run deploy

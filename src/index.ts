@@ -5,12 +5,26 @@
 // ids reach the redirect, so the host cannot be used as an open
 // redirect.
 //
+// In 'proxy' media mode the worker also serves the single-file 360p
+// stream at <BASE>/media/<id>.mp4, which is what makes a chat client's
+// native player work without depending on anyone's allowlist.
+//
 // Mounted under a path prefix (see BASE in config.ts) rather than a
 // hostname, because seaof.glass itself is served by GitHub Pages.
 
-import { BASE, BOT_UA, RATE_LIMIT, RATE_WINDOW_MS, WATCH_ORIGIN } from './config';
+import {
+	BASE,
+	BOT_UA,
+	ID_RE,
+	MEDIA_MODE,
+	MEDIA_ORIGIN,
+	RATE_LIMIT,
+	RATE_WINDOW_MS,
+	WATCH_ORIGIN,
+} from './config';
 import { homePage } from './home';
 import { oembedResponse, unavailablePage, videoPage } from './render';
+import { fetchFormats, pickProgressive, proxyMedia } from './stream';
 import { bestThumbnail, fetchMeta, parseTarget, watchUrl } from './youtube';
 
 // Per-isolate rate limit. Resets when the isolate recycles, which is
@@ -27,7 +41,7 @@ function rateOk(ip: string): boolean {
 }
 
 export default {
-	async fetch(request: Request): Promise<Response> {
+	async fetch(request: Request, _env: unknown, ctx: ExecutionContext): Promise<Response> {
 		if (request.method !== 'GET' && request.method !== 'HEAD') {
 			return new Response('method not allowed', { status: 405 });
 		}
@@ -47,6 +61,21 @@ export default {
 		if (rest === 'oembed') return oembedResponse(host, url.searchParams);
 		if (rest === '') return homePage(host);
 
+		// The media endpoint chat clients actually play from.
+		const media = /^media\/([A-Za-z0-9_-]{11})\.mp4$/.exec(rest);
+		if (media) {
+			if (MEDIA_MODE !== 'proxy') return new Response('not found', { status: 404 });
+			const id = media[1];
+			if (!ID_RE.test(id)) return new Response('not found', { status: 404 });
+
+			const formats = await fetchFormats(id);
+			const progressive = pickProgressive(formats);
+			if (!progressive?.url) {
+				return new Response('no single-file stream for this video', { status: 404 });
+			}
+			return proxyMedia(progressive.url, request);
+		}
+
 		const target = parseTarget(rest, url.searchParams);
 		if (!target) return new Response('no video id in that link', { status: 404 });
 
@@ -62,6 +91,16 @@ export default {
 
 		const meta = await fetchMeta(target.id);
 		if (!meta) return unavailablePage(canonical);
+
+		// An external backend has to mux before anyone presses play, so
+		// start it as soon as the link is scraped. The proxy mode needs
+		// no warming: it streams straight through.
+		if (MEDIA_MODE === 'external' && MEDIA_ORIGIN) {
+			ctx.waitUntil(
+				fetch(`${MEDIA_ORIGIN}/${target.id}.mp4?warm=1`)
+					.catch(() => { /* best effort; the card renders regardless */ }),
+			);
+		}
 
 		const thumbnail = await bestThumbnail(target.id, meta.thumbnail);
 		const selfUrl = `https://${host}${BASE}/${target.id}`;

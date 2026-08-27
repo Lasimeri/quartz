@@ -1,8 +1,18 @@
 // HTML and JSON the crawlers consume. Every value that reaches a meta
 // tag passes through esc(); nothing here fetches anything.
 
-import { CACHE_MISSING, CACHE_OK, THEME_COLOR, USE_PLAYER_CARD } from './config';
-import type { Meta, Target } from './youtube';
+import {
+	BASE,
+	CACHE_MISSING,
+	CACHE_OK,
+	MEDIA_HEIGHT,
+	MEDIA_MODE,
+	MEDIA_ORIGIN,
+	MEDIA_WIDTH,
+	THEME_COLOR,
+} from './config';
+import type { Target } from './youtube';
+import type { Meta } from './youtube';
 
 /** HTML entity escape for attribute-position interpolation. */
 export function esc(s: string): string {
@@ -23,6 +33,62 @@ export function html(body: string, status = 200, maxAge = CACHE_OK): Response {
 	});
 }
 
+/**
+ * Video tags for the current mode.
+ *
+ * A direct mp4 in og:video is the only route to inline playback that
+ * does not depend on the chat client's host allowlist: the client's own
+ * player takes any single progressive file that answers Range requests.
+ * Audio and video are one track there, so nothing has to stay in sync
+ * at play time.
+ */
+function mediaTags(target: Target, host: string): string[] {
+	if (MEDIA_MODE === 'off') {
+		return ['<meta property="twitter:card" content="summary_large_image">'];
+	}
+
+	if (MEDIA_MODE === 'iframe') {
+		// Mirrors what youtube.com emits on its own watch pages. Renders
+		// only where the client allowlists youtube.com as a player host.
+		const player = `https://www.youtube.com/embed/${target.id}`;
+		return [
+			'<meta property="twitter:card" content="player">',
+			`<meta property="og:video" content="${esc(player)}">`,
+			`<meta property="og:video:url" content="${esc(player)}">`,
+			`<meta property="og:video:secure_url" content="${esc(player)}">`,
+			'<meta property="og:video:type" content="text/html">',
+			`<meta property="og:video:width" content="${MEDIA_WIDTH}">`,
+			`<meta property="og:video:height" content="${MEDIA_HEIGHT}">`,
+			`<meta property="twitter:player" content="${esc(player)}">`,
+			`<meta property="twitter:player:width" content="${MEDIA_WIDTH}">`,
+			`<meta property="twitter:player:height" content="${MEDIA_HEIGHT}">`,
+		];
+	}
+
+	const media = MEDIA_MODE === 'external' && MEDIA_ORIGIN
+		? `${MEDIA_ORIGIN}/${target.id}.mp4`
+		: `https://${host}${BASE}/media/${target.id}.mp4`;
+
+	// Proxied 360p is 640x360; an external backend advertises whatever
+	// MEDIA_WIDTH/HEIGHT say it muxes.
+	const w = MEDIA_MODE === 'external' ? MEDIA_WIDTH : 640;
+	const h = MEDIA_MODE === 'external' ? MEDIA_HEIGHT : 360;
+
+	return [
+		'<meta property="twitter:card" content="player">',
+		`<meta property="og:video" content="${esc(media)}">`,
+		`<meta property="og:video:url" content="${esc(media)}">`,
+		`<meta property="og:video:secure_url" content="${esc(media)}">`,
+		'<meta property="og:video:type" content="video/mp4">',
+		`<meta property="og:video:width" content="${w}">`,
+		`<meta property="og:video:height" content="${h}">`,
+		`<meta property="twitter:player:stream" content="${esc(media)}">`,
+		'<meta property="twitter:player:stream:content_type" content="video/mp4">',
+		`<meta property="twitter:player:width" content="${w}">`,
+		`<meta property="twitter:player:height" content="${h}">`,
+	];
+}
+
 /** The crawler-facing page: meta tags only, no visible body. */
 export function videoPage(
 	meta: Meta,
@@ -32,7 +98,7 @@ export function videoPage(
 	selfUrl: string,
 	host: string,
 ): Response {
-	const oembed = `https://${host}/yt/oembed?` + new URLSearchParams({
+	const oembed = `https://${host}${BASE}/oembed?` + new URLSearchParams({
 		a: meta.author,
 		u: meta.authorUrl,
 	});
@@ -46,44 +112,20 @@ export function videoPage(
 		`<meta property="og:title" content="${esc(meta.title)}">`,
 		`<meta property="og:description" content="${esc(meta.author)}">`,
 		`<meta property="og:image" content="${esc(thumbnail)}">`,
-		...(thumbnail.includes("maxresdefault")
-			? ["<meta property=\"og:image:width\" content=\"1280\">", "<meta property=\"og:image:height\" content=\"720\">"]
+		// Only claim dimensions when the 1280x720 still is the one in use.
+		...(thumbnail.includes('maxresdefault')
+			? [
+				'<meta property="og:image:width" content="1280">',
+				'<meta property="og:image:height" content="720">',
+			]
 			: []),
 		// Raw "&": crawlers fetch these bytes without entity-decoding, so
 		// an escaped ampersand would mangle the query parameters.
 		`<link rel="alternate" type="application/json+oembed" href="${oembed}" title="${esc(meta.author)}">`,
+		...mediaTags(target, host),
+		`<meta http-equiv="refresh" content="0;url=${esc(selfUrl)}">`,
 	];
 
-	if (USE_PLAYER_CARD) {
-		// Mirror the tag set youtube.com emits on its own watch pages:
-		// an og:video of type text/html pointing at the embed player,
-		// plus a twitter:player card. og:image stays regardless, so a
-		// client that declines the player still renders the still.
-		//
-		// Whether this produces a real player is decided entirely by the
-		// chat client. Discord only runs iframe players for hosts on its
-		// own allowlist, and it applies that allowlist to the page's
-		// domain as well as the player's, so a third-party page offering
-		// a YouTube player may still be refused. Mobile clients are
-		// stricter than desktop.
-		const player = `https://www.youtube.com/embed/${target.id}`;
-		tags.push(
-			`<meta property="og:video" content="${esc(player)}">`,
-			`<meta property="og:video:url" content="${esc(player)}">`,
-			`<meta property="og:video:secure_url" content="${esc(player)}">`,
-			'<meta property="og:video:type" content="text/html">',
-			'<meta property="og:video:width" content="1280">',
-			'<meta property="og:video:height" content="720">',
-			'<meta property="twitter:card" content="player">',
-			`<meta property="twitter:player" content="${esc(player)}">`,
-			'<meta property="twitter:player:width" content="1280">',
-			'<meta property="twitter:player:height" content="720">',
-		);
-	} else {
-		tags.push('<meta property="twitter:card" content="summary_large_image">');
-	}
-
-	tags.push(`<meta http-equiv="refresh" content="0;url=${esc(selfUrl)}">`);
 	return html(`<!DOCTYPE html><html><head>${tags.join('')}</head><body></body></html>`);
 }
 
@@ -104,7 +146,7 @@ export function unavailablePage(canonical: string): Response {
  * Type must be "rich": a "link" type reads as having no embeddable
  * content and suppresses the title and description with it. Both
  * parameters are attacker-controllable, so the author is length-capped
- * and the url is pinned to a youtube.com channel path. Output is
+ * and the url is pinned to a youtube.com path. Output is
  * JSON.stringify'd and served with nosniff, so the reflection is inert.
  */
 export function oembedResponse(host: string, params: URLSearchParams): Response {

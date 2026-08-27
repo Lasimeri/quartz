@@ -55,6 +55,8 @@ UPLOAD=1
 ARG=""
 while [ $# -gt 0 ]; do
 	case "$1" in
+		--vp9)        MODE=vp9 ;;
+		--vp9-encode) MODE=vp9enc ;;
 		--av1)       MODE=av1 ;;
 		--nvenc)     MODE=nvenc ;;
 		--hevc)      MODE=hevc ;;
@@ -88,8 +90,18 @@ OUT="$WORK/$ID.mp4"
 
 # Pull the highest-quality source available; re-encoding from a better
 # source is worth more than matching the target codec on download.
-if [ "$MODE" = av1 ]; then
-	FMT="bestvideo[height<=$HEIGHT]+bestaudio/best[height<=$HEIGHT]"
+case "$MODE" in
+	vp9) OUT="$WORK/$ID.webm" ;;
+	vp9enc) OUT="$WORK/$ID.webm" ;;
+esac
+
+if [ "$MODE" = av1 ] || [ "$MODE" = vp9 ] || [ "$MODE" = vp9enc ]; then
+	if [ "$MODE" = vp9 ]; then
+		# Take VP9 and Opus as published, so the mux is a copy.
+		FMT="bestvideo[height<=$HEIGHT][vcodec^=vp9]+bestaudio[acodec=opus]/bestvideo[height<=$HEIGHT]+bestaudio"
+	else
+		FMT="bestvideo[height<=$HEIGHT]+bestaudio/best[height<=$HEIGHT]"
+	fi
 else
 	FMT="bestvideo[height<=$HEIGHT][vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[height<=$HEIGHT]"
 fi
@@ -139,6 +151,35 @@ case "$MODE" in
 		echo "==> muxing (stream copy, faststart)"
 		ffmpeg -v error -y -i "$SRC" -c copy -movflags +faststart "$OUT"
 		;;
+	vp9)
+		echo "==> muxing VP9 + Opus (stream copy, no re-encode)"
+		ffmpeg -v error -y -i "$SRC" -c copy "$OUT"
+		;;
+	vp9enc)
+		# libvpx-vp9 only: NVENC has never supported VP9 encode on any
+		# NVIDIA GPU. Two-pass, because VP9 rate control is poor in one.
+		#
+		#   row-mt 1          row-based threading, the main speed win
+		#   tile-columns 2    parallel tiles, needed to use those threads
+		#   auto-alt-ref 1    alt-ref frames
+		#   lag-in-frames 25  lookahead depth that makes alt-ref useful
+		#   cpu-used          speed/quality dial; pass 1 can run faster
+		#                     than pass 2 without hurting the result
+		echo "==> encoding VP9 ${VB} + Opus ${AB}, two-pass (CPU)"
+		echo "    pass 1"
+		ffmpeg -v error -y -i "$SRC" -c:v libvpx-vp9 -b:v "$VB" \
+			-row-mt 1 -tile-columns 2 -frame-parallel 0 \
+			-auto-alt-ref 1 -lag-in-frames 25 -g 240 \
+			-deadline good -cpu-used 4 \
+			-pass 1 -passlogfile "$WORK/pl" -an -f null -
+		echo "    pass 2"
+		ffmpeg -v error -y -i "$SRC" -c:v libvpx-vp9 -b:v "$VB" \
+			-row-mt 1 -tile-columns 2 -frame-parallel 0 \
+			-auto-alt-ref 1 -lag-in-frames 25 -g 240 \
+			-deadline good -cpu-used 2 \
+			-pass 2 -passlogfile "$WORK/pl" \
+			"${OPUS_ARGS[@]}" "$OUT"
+		;;
 	av1)
 		echo "==> encoding AV1 ${VB} + Opus ${AB}, preset $PRESET, two-pass"
 		echo "    pass 1"
@@ -172,12 +213,13 @@ ffprobe -v error -show_entries stream=codec_name,codec_type,width,height -of csv
 if [ "$UPLOAD" -eq 1 ]; then
 	[ -n "$TOKEN" ] || { echo "QUARTZ_TOKEN is not set" >&2; exit 1; }
 	echo "==> uploading to $ENDPOINT/store/$ID"
-	curl -fsS -X PUT "$ENDPOINT/store/$ID" \
+	EXT="${OUT##*.}"
+	curl -fsS -X PUT "$ENDPOINT/store/$ID.$EXT" \
 		-H "Authorization: Bearer $TOKEN" \
-		-H "Content-Type: video/mp4" \
+		-H "Content-Type: video/$EXT" \
 		--data-binary "@$OUT" --max-time 3600
 	echo
-	echo "==> live at $ENDPOINT/$ID.mp4"
+	echo "==> live at $ENDPOINT/$ID.$EXT"
 fi
 
 [ "$KEEP" -eq 1 ] && { cp "$OUT" "./$(basename "$OUT")"; echo "==> kept ./$(basename "$OUT")"; }

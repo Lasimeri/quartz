@@ -54,7 +54,7 @@ function why(status: string, reason: string): Response {
 export async function serveMedia(id: string, request: Request, env: Env): Promise<Response> {
 	// A relayed file was fetched somewhere YouTube trusts, so it both
 	// plays faster and covers videos the worker cannot reach itself.
-	const stored = await serveStored(id, request, env);
+	const stored = await serveStored(id, 'mp4', request, env);
 	if (stored) return stored;
 
 	// ?hd=1 forces the mux even when a progressive stream exists, which

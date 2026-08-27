@@ -330,7 +330,35 @@ Once uploaded, `<endpoint>/<id>.mp4` serves from R2 and never touches YouTube.
 Stored files answer with `X-Quartz-Source: r2`, and `DELETE <endpoint>/store/<id>`
 removes one.
 
+
 ### Codecs, with numbers
+### VP9
+
+```sh
+./tools/relay.sh <url> --vp9              # copy YouTube's VP9 + Opus
+./tools/relay.sh <url> --vp9-encode --vb 1500k
+```
+
+`--vp9` is the one to use. YouTube already publishes VP9, so this is a stream
+copy: instant, lossless, and about 21% smaller than the H.264 rendition. On the
+video measured above, YouTube's own 720p VP9 runs about 785 kbps, already well
+under a 1500k target, so re-encoding to hit that number would spend hours to
+produce something larger and worse.
+
+`--vp9-encode` exists for when a specific bitrate is the requirement rather
+than the size. It is two-pass `libvpx-vp9` on the CPU, with `row-mt`, tile
+columns, alt-ref frames and a 25-frame lookahead. Expect it to be slow.
+
+**No GPU path exists for VP9.** NVENC has never encoded VP9 on any NVIDIA card;
+`vp9_nvenc` is not a codec ffmpeg recognises. The 3090 decodes VP9 through
+NVDEC but cannot encode it. The only VP9 encoders present are `libvpx-vp9`
+(CPU), `vp9_vaapi` and `vp9_qsv`, and the latter two want Intel or AMD
+hardware.
+
+VP9 and AV1 both produce WebM, served at `<endpoint>/<id>.webm`. That path is
+relay-only: the live mux produces H.264 and AAC in MP4, so an unrelayed WebM
+request returns 404 rather than silently serving something else.
+
 
 Measured on one 720p video, comparing what YouTube itself publishes:
 

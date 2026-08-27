@@ -15,7 +15,7 @@ import { BASE, BOT_UA, MEDIA_MODE, MEDIA_ORIGIN, RATE_LIMIT, RATE_WINDOW_MS, WAT
 import type { Env } from './env';
 import { homePage } from './home';
 import { serveMedia } from './media';
-import { deleteStored, storeUpload } from './relay';
+import { deleteStored, isExt, serveStored, storeUpload } from './relay';
 import { oembedResponse, unavailablePage, videoPage } from './render';
 import { bestThumbnail, fetchMeta, parseTarget, watchUrl } from './youtube';
 
@@ -50,10 +50,11 @@ export default {
 
 		// Uploads from a trusted machine. Checked before the read-only
 		// guard below, since these are the only writes the worker takes.
-		const store = /^store\/([A-Za-z0-9_-]{11})$/.exec(rest);
+		const store = /^store\/([A-Za-z0-9_-]{11})(?:\.(mp4|webm))?$/.exec(rest);
 		if (store && underBase) {
-			if (method === 'PUT') return storeUpload(store[1], request, env);
-			if (method === 'DELETE') return deleteStored(store[1], request, env);
+			const ext = store[2] && isExt(store[2]) ? store[2] : 'mp4';
+			if (method === 'PUT') return storeUpload(store[1], ext, request, env);
+			if (method === 'DELETE') return deleteStored(store[1], ext, request, env);
 			return new Response('method not allowed', { status: 405 });
 		}
 
@@ -81,8 +82,18 @@ export default {
 		// No OpenGraph tags are involved, so no allowlist applies. The
 		// cost is that a media link carries no title or channel, which
 		// is why the card at <BASE>/<id> still exists alongside it.
-		const direct = /^(?:media\/)?([A-Za-z0-9_-]{11})\.mp4$/.exec(rest);
-		if (direct) return serveMedia(direct[1], request, env);
+		const direct = /^(?:media\/)?([A-Za-z0-9_-]{11})\.(mp4|webm)$/.exec(rest);
+		if (direct) {
+			const [, vid, ext] = direct;
+
+			// WebM only ever comes from the relay: the live mux produces
+			// H.264 and AAC in MP4, so there is nothing to fall back to.
+			if (ext === 'webm') {
+				const stored = await serveStored(vid, 'webm', request, env);
+				return stored ?? new Response('not relayed as webm\n', { status: 404 });
+			}
+			return serveMedia(vid, request, env);
+		}
 
 		const target = parseTarget(rest, url.searchParams);
 		if (!target) return new Response('no video id in that link', { status: 404 });

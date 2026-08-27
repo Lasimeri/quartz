@@ -110,11 +110,23 @@ Two fixes, either works:
 
 - **Dashboard, no token changes.** Workers & Pages, open the worker, Settings,
   Domains & Routes, Add route. Pattern `your-domain.com/yt/*`, pick the zone.
-- **Fix the token.** My Profile, API Tokens, edit the token, add
-  *Zone > Workers Routes > Edit* scoped to that zone, then `npm run deploy`.
+- **Fix the token.** Where the token lives depends on its type, and this
+  catches people out: a value beginning `cfat_` is an **account-owned**
+  token, found under *Manage Account > API Tokens*. Anything else is a
+  user token, found under *My Profile > API Tokens*. Edit it, add
+  *Zone > Workers Routes > Edit*, and make sure Zone Resources includes
+  the zone. The secret value does not change, so whatever stores it
+  keeps working. Then `npm run deploy`.
 
-Note that `npx wrangler login` (OAuth) has this permission; only scoped API
-tokens tend to lack it.
+An OAuth login (`npx wrangler login`) carries this permission, but note
+that `CLOUDFLARE_API_TOKEN` takes precedence over it whenever the
+variable is set, and wrangler will not refresh expired OAuth
+credentials in a non-interactive shell. To force the OAuth path for one
+command, unset the variable for that command only:
+
+```sh
+env -u CLOUDFLARE_API_TOKEN npx wrangler deploy
+```
 
 ---
 

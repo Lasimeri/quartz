@@ -48,7 +48,8 @@ printf '\nembeds\n'
 check 'title'            'og:title" content="Rick Astley'          "$(bot "/$VID?cb=$CB")"
 check 'channel'          'og:description" content="Rick Astley"'   "$(bot "/$VID?cb=$CB")"
 check 'thumbnail'        'og:image" content="https://i.ytimg.com'  "$(bot "/$VID?cb=$CB")"
-check 'large image card' 'twitter:card" content="summary_large_image"' "$(bot "/$VID?cb=$CB")"
+check 'player card'       'twitter:card" content="player"'      "$(bot "/$VID?cb=$CB")"
+check 'og:video embed'   'og:video:type" content="text/html"'  "$(bot "/$VID?cb=$CB")"
 check 'unavailable video' 'Video unavailable'                      "$(bot "/aaaaaaaaaaa?cb=$CB")"
 
 printf '\nrouting\n'

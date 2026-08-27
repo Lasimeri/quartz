@@ -163,7 +163,7 @@ Everything adjustable is in `src/config.ts`.
 | `WATCH_ORIGIN` | `https://www.youtube.com` | Where humans are sent |
 | `BASE` | `/yt` | Path prefix; must match the route pattern |
 | `THEME_COLOR` | `#c4945a` | Colour of the embed's left bar |
-| `USE_PLAYER_CARD` | `false` | See below |
+| `USE_PLAYER_CARD` | `true` | See below |
 | `BOT_UA` | Discord, Telegram, Slack, ... | Which agents get meta tags |
 | `RATE_LIMIT` | `60` | Requests per IP per minute |
 | `CACHE_OK` | `3600` | Seconds to cache a successful card |
@@ -171,12 +171,24 @@ Everything adjustable is in `src/config.ts`.
 
 ### About `USE_PLAYER_CARD`
 
-Turning it on emits a `twitter:player` card pointing at
-`youtube-nocookie.com/embed/<id>`, asking for an inline player instead of a
-still image. Discord only renders inline players for domains on its own
-allowlist, and a card it declines to honour shows *less* than an image card,
-not more. Off by default for that reason. Flip it, redeploy, and test with a
-fresh URL if you want to find out how your chat platform behaves.
+On (the default) the page emits the same video tags youtube.com emits on its
+own watch pages: `og:video` and `og:video:secure_url` pointing at
+`youtube.com/embed/<id>`, `og:video:type` of `text/html`, dimensions, and a
+`twitter:player` card. `og:image` is emitted either way, so a client that
+declines the player still renders the thumbnail rather than losing the card.
+
+**Whether you get a real player is decided by the chat client, not by these
+tags.** Discord only runs iframe players for hosts on its own allowlist, and it
+weighs the page's domain as well as the player's, so a third-party page
+offering a YouTube player can still be refused. Mobile clients are stricter
+than desktop, and the Discord Android app in particular has been observed
+showing only the thumbnail.
+
+There is no server-side fix for a refusal. Inline playback that does not depend
+on an allowlist requires a direct media URL in `og:video`, which for YouTube
+means solving the PO token and adaptive-format problems described in section 6.
+
+Set it to `false` to go back to a plain large-image card.
 
 ---
 

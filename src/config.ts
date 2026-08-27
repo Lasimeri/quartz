@@ -20,7 +20,7 @@ export const THEME_COLOR = '#c4945a';
  * off by default: an unhonoured player card shows less than an image
  * card, not more.
  */
-export const USE_PLAYER_CARD = false;
+export const USE_PLAYER_CARD = true;
 
 /** User agents that receive OpenGraph HTML instead of a redirect. */
 export const BOT_UA =

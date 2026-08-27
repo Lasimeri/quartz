@@ -46,14 +46,34 @@ export function videoPage(
 		`<meta property="og:title" content="${esc(meta.title)}">`,
 		`<meta property="og:description" content="${esc(meta.author)}">`,
 		`<meta property="og:image" content="${esc(thumbnail)}">`,
+		...(thumbnail.includes("maxresdefault")
+			? ["<meta property=\"og:image:width\" content=\"1280\">", "<meta property=\"og:image:height\" content=\"720\">"]
+			: []),
 		// Raw "&": crawlers fetch these bytes without entity-decoding, so
 		// an escaped ampersand would mangle the query parameters.
 		`<link rel="alternate" type="application/json+oembed" href="${oembed}" title="${esc(meta.author)}">`,
 	];
 
 	if (USE_PLAYER_CARD) {
-		const player = `https://www.youtube-nocookie.com/embed/${target.id}`;
+		// Mirror the tag set youtube.com emits on its own watch pages:
+		// an og:video of type text/html pointing at the embed player,
+		// plus a twitter:player card. og:image stays regardless, so a
+		// client that declines the player still renders the still.
+		//
+		// Whether this produces a real player is decided entirely by the
+		// chat client. Discord only runs iframe players for hosts on its
+		// own allowlist, and it applies that allowlist to the page's
+		// domain as well as the player's, so a third-party page offering
+		// a YouTube player may still be refused. Mobile clients are
+		// stricter than desktop.
+		const player = `https://www.youtube.com/embed/${target.id}`;
 		tags.push(
+			`<meta property="og:video" content="${esc(player)}">`,
+			`<meta property="og:video:url" content="${esc(player)}">`,
+			`<meta property="og:video:secure_url" content="${esc(player)}">`,
+			'<meta property="og:video:type" content="text/html">',
+			'<meta property="og:video:width" content="1280">',
+			'<meta property="og:video:height" content="720">',
 			'<meta property="twitter:card" content="player">',
 			`<meta property="twitter:player" content="${esc(player)}">`,
 			'<meta property="twitter:player:width" content="1280">',
